@@ -1,0 +1,14 @@
+# environment / caches
+.venv/
+__pycache__/
+*.pyc
+
+# results (overwritten by every run)
+ergebnisse/
+
+# data: only the templates are versioned
+daten/*
+!daten/rissausgaenge.xlsx
+!daten/spannungsfelder/
+daten_synth*/
+testdaten/

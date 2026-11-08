@@ -1,0 +1,6 @@
+numpy>=1.26
+pandas>=2.1
+opencv-python>=4.8      # labels.tif lesen (32-bit TIFF), Dilatation, Ellipsen, konvexe Hülle
+pyyaml>=6.0
+openpyxl>=3.1           # Excel lesen und schreiben
+matplotlib>=3.8         # Grafiken (PNG)
