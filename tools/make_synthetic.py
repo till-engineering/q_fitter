@@ -41,6 +41,12 @@ def main(config: dict | None = None) -> int:
         return 2
     source = project_path(syn["source"])
     target = project_path(syn["target_dir"])
+    input_dir = project_path(config["input"]["dir"])
+    if target.resolve() == input_dir.resolve() or input_dir.resolve().is_relative_to(target.resolve()):
+        print(f"synthetic.target_dir ({syn['target_dir']}) is the input folder input.dir ({config['input']['dir']}) - "
+              f"it would be deleted. Set input.dir to the folder with the stress fields (e.g. daten) for generating.",
+              file=sys.stderr)
+        return 2
     if target.exists():
         shutil.rmtree(target)
     (target / "poren").mkdir(parents=True)

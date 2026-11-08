@@ -22,6 +22,7 @@ Columns of sample.pores (one row per pore):
     note        text, also in the result
   added by the pipeline after the pore models:
     dist_um     distance of the nearest pore pixel to the crack origin (Schliff pores)
+    outside_frame  True = xi or zeta more than 0.01 outside 0..1 (stress of the nearest edge is used)
     g_field     stress field at (xi, zeta)
     g           stress that is used        <- stress model
 """
@@ -208,8 +209,14 @@ def _load_sample(sample_id, pores_dir, cracks_dir, excel, crack_area_column) -> 
         raise SkipSample("not in rissausgaenge.xlsx")
     row = excel[sample_id]
     area = row.get(crack_area_column)
-    if area is None or not float(area) > 0:
+    if area is None:
         raise SkipSample(f"no area in column {crack_area_column} of rissausgaenge.xlsx")
+    try:
+        area = float(area)
+    except (TypeError, ValueError):
+        raise SkipSample(f"area {area!r} in column {crack_area_column} of rissausgaenge.xlsx is not a number") from None
+    if not area > 0:
+        raise SkipSample(f"area {area:g} in column {crack_area_column} of rissausgaenge.xlsx is not > 0")
 
     crack_file = cracks_dir / f"{sample_id}_results" / "cracks.json"
     if not crack_file.is_file():
@@ -220,6 +227,12 @@ def _load_sample(sample_id, pores_dir, cracks_dir, excel, crack_area_column) -> 
     xi, zeta = cracks["xi"].iloc[0], cracks["zeta"].iloc[0]
     if _is_missing(xi) or _is_missing(zeta):
         raise SkipSample("crack origin without xi / zeta (no sample frame in the labeler)")
+    try:
+        xi, zeta = float(xi), float(zeta)
+    except (TypeError, ValueError):
+        raise SkipSample(f"crack origin xi = {_show(xi)}, zeta = {_show(zeta)} in cracks.json: not a number") from None
+    if not (np.isfinite(xi) and np.isfinite(zeta)):
+        raise SkipSample(f"crack origin xi = {xi}, zeta = {zeta} in cracks.json are not finite")
 
     images, notes = _load_images(pores_dir / f"{sample_id}_results")
     if not images:
@@ -256,13 +269,25 @@ def _load_images(folder: Path) -> tuple[dict[str, SchliffImage], list[str]]:
         if labels is None:
             notes.append(f"{name}: labels.tif missing or unreadable - image not used")
             continue
-        origin = row["frame_origin_px"]
-        images[name] = SchliffImage(name, labels.astype(np.int32, copy=False), float(row["pixel_size_um"]),
-                                    (float(origin[0]), float(origin[1])), float(row["frame_angle_deg"]),
-                                    float(row["frame_length_px"]), float(row["frame_thickness_px"]))
+        try:
+            origin = row["frame_origin_px"]
+            values = (float(row["pixel_size_um"]), (float(origin[0]), float(origin[1])), float(row["frame_angle_deg"]),
+                      float(row["frame_length_px"]), float(row["frame_thickness_px"]))
+        except (TypeError, ValueError, IndexError, KeyError):
+            notes.append(f"{name}: scale / sample frame in images.json are not numbers - image not used")
+            continue
+        if not (values[0] > 0 and values[3] > 0 and values[4] > 0):
+            notes.append(f"{name}: pixel size, frame length and thickness must be > 0 - image not used")
+            continue
+        images[name] = SchliffImage(name, labels.astype(np.int32, copy=False), *values)
     for note in notes:
         log.warning("%s", note)
     return images, notes
+
+
+def _show(value) -> str:
+    """A value for a message: text in quotes, numbers plain."""
+    return repr(value) if isinstance(value, str) else f"{float(value):g}" if isinstance(value, (int, float)) else str(value)
 
 
 def _clean_id(value) -> str:

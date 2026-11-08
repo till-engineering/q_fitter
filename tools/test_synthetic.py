@@ -48,8 +48,10 @@ def main() -> int:
     print(f"1/2 generating {syn['target_dir']}/  (q_true = {syn['q_true']:g}, k_true = {syn['k_true']}, seed {syn['seed']})")
     logging.disable(logging.WARNING)              # source images without frame are skipped silently
     with contextlib.redirect_stdout(io.StringIO()):
-        make_synthetic.main(config)               # stress fields are taken from the normal input.dir
+        code = make_synthetic.main(config)        # stress fields are taken from the normal input.dir
     logging.disable(logging.NOTSET)
+    if code:
+        return code
     config["input"]["dir"] = syn["target_dir"]
     print("2/2 evaluating ...")
     out = run(config)

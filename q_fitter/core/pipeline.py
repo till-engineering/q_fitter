@@ -64,9 +64,29 @@ def apply_exclusion(sample: Sample, radius_um: float) -> None:
     pores.loc[near, "note"] = _append(pores.loc[near, "note"], f"closer than {radius_um} um to the crack origin")
 
 
+FRAME_TOLERANCE = 0.01      # xi, zeta this far outside 0..1 count as outside the sample frame
+
+
 def apply_stress(sample: Sample, field: StressField, stress_model) -> None:
+    """g_field = stress field at (xi, zeta), then the stress model -> g. A pore (or crack origin)
+    outside the sample frame keeps its row but gets the stress of the nearest edge - it is marked
+    (column outside_frame, note) and counted per sample, so a badly placed frame is seen at once."""
     pores = sample.pores
-    pores["g_field"] = field.evaluate(pores["xi"].to_numpy(), pores["zeta"].to_numpy())
+    xi, zeta = pores["xi"].to_numpy(float), pores["zeta"].to_numpy(float)
+    outside = ((xi < -FRAME_TOLERANCE) | (xi > 1 + FRAME_TOLERANCE) |
+               (zeta < -FRAME_TOLERANCE) | (zeta > 1 + FRAME_TOLERANCE))
+    pores["outside_frame"] = outside
+    if outside.any():
+        notes = [f"outside the sample frame (xi = {x:.3g}, zeta = {z:.3g}) - stress of the nearest edge"
+                 for x, z in zip(xi[outside], zeta[outside])]
+        pores.loc[outside, "note"] = [n + "; " + t if n else t for n, t in zip(pores.loc[outside, "note"], notes)]
+        n_pores = int((outside & (pores["kind"] == "pore").to_numpy()).sum())
+        what = [f"{n_pores} Schliff pore{'s' if n_pores > 1 else ''}"] if n_pores else []
+        if outside[(pores["kind"] == "crack").to_numpy()].any():
+            what.insert(0, "the crack origin")
+        log.warning("%s: %s outside the sample frame - check the frame (images.json / labeler)",
+                    sample.id, " and ".join(what))
+    pores["g_field"] = field.evaluate(xi, zeta)
     g = np.asarray(stress_model.stress(pores, sample), dtype=np.float64)
     if g.shape != (len(pores),):
         raise ValueError(f"stress model {stress_model.name} returned {g.shape}, expected ({len(pores)},)")
@@ -97,6 +117,7 @@ def run(config: dict | None = None):
 
     out_dir = project_path(config["output"]["dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
+    output.clean(out_dir)                         # files of the previous run
     (out_dir / "config_used.yaml").write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True),
                                              encoding="utf-8")   # the settings really used
     output.write(out_dir, samples, skipped, results, field)

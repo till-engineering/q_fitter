@@ -51,6 +51,8 @@ Test schreibt nach `daten_synth/` bzw. `daten_synth_k<k>/`, setzt dafür intern 
 - `m2_overall.json`, `m2_profile.png`, `m2_likelihood.png` – bestes q, k, 95-%-Intervall
 - `val_*` (nur mit `validation.enabled`): `val_q_stability.png` (q je Split), `val_hit_rate.png` (Trefferquote vs. Raten), `val_per_sample.png` (Treffer je Probe), `val_split_matrix.png` (Probe × Split: Training/Treffer/Fehler); Tabellen `val_overall`, `val_splits`, `val_predictions`, `val_per_sample`, `val_membership` (welche Probe/Bilder in welchem Split Training oder Test waren)
 - `proben.json`, `poren.json`, `uebersprungen.json`, `config_used.yaml`
+- `proben.json` → `outside_frame` / `crack_outside_frame`: Poren bzw. Rissausgang außerhalb des Probenrahmens (bekommen die Spannung des nächsten Rands; Rahmen prüfen)
+- Jeder Lauf löscht zuerst die Dateien des vorigen Laufs (Liste in `.q_fitter_files.txt`), fremde Dateien bleiben
 
 ## Eigene Methoden
 Vorlage kopieren (ohne `_` im Dateinamen, sonst nicht geladen): `q_fitter/pore_models/_template.py` bzw. `q_fitter/stress_models/_template.py`, Namen per `@register` vergeben, in `config.yaml` eintragen. Siehe `METHODEN.md`.

@@ -176,7 +176,7 @@ Bekannte Schwächen (im Hinterkopf behalten):
 | Datei | Inhalt |
 |---|---|
 | `ergebnis.xlsx` | Blätter **Proben**, **Uebersprungen**, **m1_overall**, **m1_V_q**, **m1_contradictions**, **Poren** |
-| `proben.json` | je Probe: Anzahl Bilder / Poren / ausgeschlossen, A0, ξ0, ζ0, g0, Excel-Spalten, M1: q_lower, q_upper, Anzahl Schranken, Widersprüche, welche Pore die engste Schranke liefert, Status |
+| `proben.json` | je Probe: Anzahl Bilder / Poren / ausgeschlossen / außerhalb des Rahmens (`outside_frame`, `crack_outside_frame`), A0, ξ0, ζ0, g0, Excel-Spalten, M1: q_lower, q_upper, Anzahl Schranken, Widersprüche, welche Pore die engste Schranke liefert, Status |
 | `poren.json` | je Pore: Rohwerte, Werte nach den Modellen, dist_um, g_field, g, M1: s, a, q*, Art der Schranke |
 | `uebersprungen.json` | IDs mit Grund |
 | `m1_overall.json` | Gesamtergebnis: Schnittmenge, Status, V-Minimum und die q-Bereiche dazu |
@@ -189,6 +189,7 @@ Bekannte Schwächen (im Hinterkopf behalten):
 | `m2_profile.png`, `m2_likelihood.png` | M2: Profil-Likelihood von q (+ bestes k je q); Likelihood über q und k |
 | `m1_samples/<ID>.png` | Schliffbild je Probe mit farbigen Poren (`sample_images`: contradictions / all / none) |
 | `config_used.yaml` | Kopie der Config |
+| `.q_fitter_files.txt` | Dateien dieses Laufs; der nächste Lauf löscht genau diese zuerst (kein veraltetes `m2_*`/`val_*`) |
 
 ### Widersprüche – Hinweis, dass das Modell für A oder g nicht passt
 

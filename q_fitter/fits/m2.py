@@ -41,7 +41,7 @@ class M2(Fit):
         usable, notes = [], {}
         for sample in samples:
             ln_crack, ln_comp = _log_parts(sample)
-            if not np.isfinite(ln_crack[0]):
+            if not np.isfinite(ln_crack[1]):        # ln g0 = -inf: g0 <= 0
                 notes[sample.id] = "crack origin without stress (g0 <= 0) - not used in M2"
             elif ln_comp.shape[1] == 0:
                 notes[sample.id] = "no competitors - not used in M2"

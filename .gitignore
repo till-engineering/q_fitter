@@ -12,3 +12,12 @@ daten/*
 !daten/spannungsfelder/
 daten_synth*/
 testdaten/
+
+# never version pictures or result files, wherever they are
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.bmp
+.q_fitter_files.txt
