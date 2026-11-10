@@ -41,6 +41,7 @@ input/
   stress of a pore is taken – `run` (as in the Pore_Detection run), `area` (every pixel with its own
   stress), `centroid` (stress at the centroid, per zone), `max` (highest stress, per zone) or `mean`
   (stress averaged over the whole pore; only in q fitter, not in Pore_Detection).
+  The methods with their maths: [PORENSPANNUNG.md](PORENSPANNUNG.md).
 - The sample picture is taken from the original image (path in images.json). If it is not
   found (other computer), a picture is made from the masks of the results (pores dark).
 - Sections without sample frame or without pore_index are listed with the reason.
