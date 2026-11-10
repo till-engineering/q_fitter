@@ -1,4 +1,4 @@
-"""Main window: one q slider for all IDs on top, below all IDs with their sections, each section
+"""Main window: one q slider and one pore stress switch for all IDs on top, below all IDs with their sections, each section
 one plot over the full width. Only the plots in view are redrawn when q changes (the others when
 they are scrolled into view)."""
 
@@ -9,6 +9,7 @@ from PySide6.QtCore import QPoint, Qt, QTimer
 from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel, QMainWindow, QScrollArea,
                                QSizePolicy, QSlider, QVBoxLayout, QWidget)
 
+from .data import METHODS, RUN
 from .plot import STYLE, ImagePlot
 
 NOTE_HEIGHT_PX = 46         # height of a section without plot (only its note)
@@ -24,19 +25,19 @@ class Canvas(FigureCanvasQTAgg):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.font_size = config["plot"]["font_size"]
         self.ratio = config["plot"]["height_ratio"] if image.ok else None
-        self.drawn_q = None
+        self.drawn = None                           # (q, method) of the last drawing
 
-    def show_q(self, q: float) -> None:
-        if self.drawn_q == q:
+    def show_q(self, q: float, method: str) -> None:
+        if self.drawn == (q, method):
             return
         with matplotlib.rc_context({**STYLE, "font.size": self.font_size}):
-            self.plot.set_q(q)
+            self.plot.set_q(q, method)
             self.draw()
-        self.drawn_q = q
+        self.drawn = (q, method)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.drawn_q = None                         # number placement depends on the size
+        self.drawn = None                         # number placement depends on the size
 
 
 class Window(QMainWindow):
@@ -55,6 +56,11 @@ class Window(QMainWindow):
         self.spin.setSingleStep(q["step"])
         self.spin.setDecimals(max(0, len(f"{q['step']:g}".partition(".")[2])))
         self.spin.setMinimumWidth(90)
+        self.method = QComboBox()
+        for method, text in METHOD_TEXT.items():
+            self.method.addItem(text, method)
+        self.method.setCurrentIndex(self.method.findData(config["stress"]["pore_stress"]))
+        self.method.setToolTip("How the stress of a pore is taken (for all IDs)")
         self.jump = QComboBox()
         self.jump.addItems([s.id for s in samples])
         self.jump.setMinimumWidth(120)
@@ -65,6 +71,9 @@ class Window(QMainWindow):
         bar.addWidget(title)
         bar.addWidget(self.slider, 1)
         bar.addWidget(self.spin)
+        bar.addSpacing(24)
+        bar.addWidget(QLabel("Pore stress"))
+        bar.addWidget(self.method)
         bar.addSpacing(24)
         bar.addWidget(QLabel("Go to ID"))
         bar.addWidget(self.jump)
@@ -105,6 +114,7 @@ class Window(QMainWindow):
         self.timer.timeout.connect(self.redraw_visible)
         self.slider.valueChanged.connect(self._slider_moved)
         self.spin.valueChanged.connect(self._spin_changed)
+        self.method.currentIndexChanged.connect(lambda _: self.redraw_visible())
         self.scroll.verticalScrollBar().valueChanged.connect(lambda _: self.timer.start())
         self.jump.activated.connect(lambda i: self.scroll.verticalScrollBar().setValue(
             self.headers[self.jump.itemText(i)].y()))
@@ -144,15 +154,25 @@ class Window(QMainWindow):
         self.content.layout().activate()                # positions are needed right away
 
     def redraw_visible(self):
-        """Redraw the plots in view for the current q."""
+        """Redraw the plots in view for the current q and pore stress method."""
         self._fit_heights()
         top = self.scroll.verticalScrollBar().value()
         bottom = top + self.scroll.viewport().height()
-        q = self.q
+        q, method = self.q, self.method.currentData()
         for canvas in self.canvases:
             y = canvas.mapTo(self.content, QPoint(0, 0)).y()
             if y < bottom and y + canvas.height() > top:
-                canvas.show_q(q)
+                canvas.show_q(q, method)
+
+
+METHOD_TEXT = {
+    RUN: "as in the run",
+    "area": "area – every pixel",
+    "centroid": "centroid (per zone)",
+    "max": "max (per zone)",
+    "mean": "mean over the pore",
+}
+assert set(METHOD_TEXT) == {RUN, *METHODS}
 
 
 def _header(sample) -> str:

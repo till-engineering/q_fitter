@@ -5,13 +5,13 @@ left   Pareto: the `top` pores with the largest contribution A g^q (share of the
 right  the straightened sample (outer surface on top), the top pores numbered, the cracks of the
        labeler as cyan rings with a cross at their xi / zeta
 
-The picture is drawn once; set_q() only redraws the bars and the numbers.
+The picture is drawn once; set_q() only redraws the bars, the numbers and the info line.
 """
 
 import numpy as np
 from matplotlib.figure import Figure
 
-from .data import ZONE_BOUNDARY, Image, Sample
+from .data import RUN, ZONE_BOUNDARY, Image, Sample
 
 OUTER, INNER = "#d9480f", "#0f6d8c"
 CRACK = "#00e5ff"
@@ -66,15 +66,18 @@ class ImagePlot:
                         bbox=dict(boxstyle="round,pad=0.12", facecolor="black", alpha=0.6, linewidth=0))
         cracks = "   ".join(f"{c.label}: ξ {c.xi:.2f}, ζ {c.zeta:.2f}" for c in self.sample.cracks)
         ax.set_title(cracks or "no crack from the labeler", fontsize="medium")
-        ax.annotate(image.info, (0.0, 0.0), xycoords="axes fraction", xytext=(0, -2), textcoords="offset points",
-                    ha="left", va="top", fontsize="small", color="#495057")
+        self.info = ax.annotate("", (0.0, 0.0), xycoords="axes fraction", xytext=(0, -2), textcoords="offset points",
+                                ha="left", va="top", fontsize="small", color="#495057")
 
-    def set_q(self, q: float) -> None:
+    def set_q(self, q: float, method: str = RUN) -> None:
         if not self.image.ok:
             return
         image = self.image
+        used = image.method(method)
+        differs = "" if used == image.run_method else f" (run: {image.run_method})"
+        self.info.set_text(f"{image.info}, pore stress {used}{differs}")
         self._layout()
-        weighted = image.contributions(q)
+        weighted = image.contributions(q, method)
         total = weighted.sum()
         phi = total / image.sample_area_px2
         self.bars.cla()
@@ -84,7 +87,7 @@ class ImagePlot:
         self.numbers = []
         if len(weighted) == 0 or not np.isfinite(total) or total <= 0:
             self.bars.text(0.5, 0.5, "No pore contributes", ha="center", va="center", transform=self.bars.transAxes)
-            self.bars.set_title(f"{image.name}     q = {q:g}", loc="left", fontsize="x-large")
+            self.bars.set_title(f"{image.name}     q = {q:g}     pore stress {used}", loc="left", fontsize="x-large")
             return
         order = np.argsort(weighted)[::-1]
         shown = order[:self.top]
@@ -113,7 +116,7 @@ class ImagePlot:
         self.bars.legend(*handles, loc="center right")
         five = min(5, len(order))
         self.bars.set_title(
-            f"{image.name}     q = {q:g}     Φ_q = {phi:.4g}\n{len(weighted)} pores     "
+            f"{image.name}     q = {q:g}     Φ_q = {phi:.4g}     pore stress {used}\n{len(weighted)} pores     "
             f"top {five} = {cumulative[five - 1]:.0f} %  ·  top {len(shown)} = {cumulative[-1]:.0f} %",
             loc="left", fontsize="x-large")
         self._number_pores(weighted)

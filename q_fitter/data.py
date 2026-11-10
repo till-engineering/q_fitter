@@ -1,15 +1,20 @@
 """Reads the input: the results of Pore_Detection (<ID>_results folders) and the crack reports of the
 Fatigue_crack_labeler (<ID>_cracks.xlsx), matched by the ID.
 
-Per image everything needed to draw the Pareto of the pore contributions A g^q for ANY q is
-prepared once: pores.json only holds them for the q_values of the run, so they are computed again
-from labels.tif, the sample frame (images.json) and the stress field – exactly as pore_index of
-Pore_Detection does it (same pore_stress, pores split pixel by pixel at the zone boundary):
+Per image everything needed to draw the Pareto of the pore contributions A g^q for ANY q and
+EVERY pore stress method is prepared once: pores.json only holds them for the q_values of the run,
+so they are computed again from labels.tif, the sample frame (images.json) and the stress field –
+for the methods of pore_index exactly as Pore_Detection does it (pores split pixel by pixel at the
+zone boundary):
 
     contribution of pore i = sum over its parts k of  w_k * g_k^q
         area      every pixel is a part:  w = 1,          g = stress at the pixel
         centroid  pore part per zone:     w = part area,  g = stress at the centroid of the part
         max       pore part per zone:     w = part area,  g = highest stress in the part
+        mean      the whole pore:         w = pore area,  g = mean stress over its pixels
+                  (only q_fitter, not in Pore_Detection; no split at the zone boundary)
+
+The method is switched in the window ("run" = the pore_stress of the Pore_Detection run).
 
 Positions: xi = x / length, zeta = z / thickness in the sample frame (zeta = 0 inner, 1 outer).
 The cracks of the labeler (xi, zeta on the fracture surface) are drawn at the same xi, zeta on
@@ -35,12 +40,18 @@ RESULTS_SUFFIX = "_results"
 CRACKS_SUFFIX = "_cracks.xlsx"
 CRACKS_SHEET = "Cracks"
 ZONE_BOUNDARY = 0.5         # zeta of the boundary between inner and outer zone (as pore_index)
-PORE_STRESS = ("centroid", "area", "max")
+PORE_STRESS = ("centroid", "area", "max")      # the methods of pore_index (Pore_Detection)
+METHODS = ("area", "centroid", "max", "mean")   # all methods of q_fitter
+RUN = "run"                                     # the method of the Pore_Detection run (images.json)
 
 
 def load_config() -> dict:
     with open(CONFIG, encoding="utf-8") as file:
-        return yaml.safe_load(file)
+        config = yaml.safe_load(file)
+    method = config["stress"]["pore_stress"]
+    if method not in (RUN, *METHODS):
+        raise ValueError(f"config.yaml stress.pore_stress: '{method}' – allowed: {', '.join((RUN, *METHODS))}")
+    return config
 
 
 def resolve(path) -> Path:
@@ -62,13 +73,13 @@ class Image:
 
     name: str
     note: str = ""
-    info: str = ""                          # stress field, pore_stress, picture source
+    info: str = ""                          # stress field, picture source
+    run_method: str = ""                    # pore_stress of the Pore_Detection run
     pore_ids: np.ndarray = None             # (n,) pore numbers as in Pore_Detection
     pore_zeta: np.ndarray = None            # (n,) zeta of the pore centroid (zone colour)
     pore_xy: np.ndarray = None              # (n, 2) centroid in picture px
-    part_pore: np.ndarray = None            # (m,) index of the pore of every part
-    part_weight: np.ndarray = None          # (m,)
-    part_g: np.ndarray = None               # (m,)
+    # method -> (part_pore, part_weight, part_g): (m,) index of the pore of every part, w, g
+    parts: dict = field(default_factory=dict)
     sample_area_px2: float = math.nan
     picture: np.ndarray = None              # straightened sample, RGB uint8, outer surface on top
     # picture px = scale * (frame px + margin): x to the right, z upwards
@@ -81,11 +92,16 @@ class Image:
     def ok(self) -> bool:
         return not self.note
 
-    def contributions(self, q: float) -> np.ndarray:
-        """A g^q of every pore (px²)."""
+    def method(self, method: str = RUN) -> str:
+        """The method actually used ("run" -> pore_stress of the run)."""
+        return self.run_method if method == RUN else method
+
+    def contributions(self, q: float, method: str = RUN) -> np.ndarray:
+        """A g^q of every pore (px²) with the pore stress method (area, centroid, max, mean or run)."""
+        part_pore, weight, g = self.parts[self.method(method)]
         with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-            values = self.part_weight * self.part_g ** q
-        return np.bincount(self.part_pore, weights=values, minlength=len(self.pore_ids))
+            values = weight * g ** q
+        return np.bincount(part_pore, weights=values, minlength=len(self.pore_ids))
 
     def to_picture(self, xi, zeta) -> tuple[np.ndarray, np.ndarray]:
         """(xi, zeta) -> picture px (x, y)."""
@@ -182,26 +198,12 @@ def load_image(folder: Path, row: dict, fields_dir: Path, plot: dict) -> Image:
 
     pore_ids, index, count = np.unique(ids, return_inverse=True, return_counts=True)
     n = len(pore_ids)
-    part = 2 * index + (zeta >= ZONE_BOUNDARY)
-    part_area = np.bincount(part, minlength=2 * n).astype(np.float64)
-    if mode == "area":
-        part_pore, weight, part_g = index, np.ones(len(g)), g
-    else:
-        used = part_area > 0
-        if mode == "centroid":
-            area = np.maximum(part_area, 1)
-            part_g = stress.evaluate(np.bincount(part, weights=xi, minlength=2 * n) / area,
-                                     np.bincount(part, weights=zeta, minlength=2 * n) / area)
-        else:
-            part_g = np.zeros(2 * n)
-            np.maximum.at(part_g, part, g)
-        part_pore, weight, part_g = (np.arange(2 * n) // 2)[used], part_area[used], part_g[used]
+    parts = _parts(index, n, xi, zeta, g, stress)
 
     margin = plot["picture_margin"] * max(length, thickness)
     scale = min(1.0, plot["picture_max_px"] / (max(length, thickness) + 2 * margin))
-    image = Image(name, pore_ids=pore_ids,
+    image = Image(name, pore_ids=pore_ids, run_method=mode, parts=parts,
                   pore_zeta=np.bincount(index, weights=zeta, minlength=n) / count,
-                  part_pore=part_pore, part_weight=weight, part_g=part_g,
                   sample_area_px2=float(row["sample_area_outer_px2"]) + float(row["sample_area_inner_px2"]),
                   scale=scale, margin_px=margin, length_px=length, thickness_px=thickness)
     sx, sz = np.bincount(index, weights=x, minlength=n) / count, np.bincount(index, weights=z, minlength=n) / count
@@ -209,8 +211,29 @@ def load_image(folder: Path, row: dict, fields_dir: Path, plot: dict) -> Image:
 
     original, source = _picture_source(folder, row, labels)
     image.picture = _straighten(original, scale, margin, length, thickness, (oy, ox), (xy, xx), (zy, zx))
-    image.info = f"field {stress.key} [{stress.unit}], pore_stress {mode}, picture: {source}"
+    image.info = f"field {stress.key} [{stress.unit}], picture: {source}"
     return image
+
+
+def _parts(index, n, xi, zeta, g, stress) -> dict:
+    """The parts (pore, w, g) of every method; index = pore of every pixel, g = stress at every pixel.
+    area / centroid / max as pore_index of Pore_Detection (parts split at the zone boundary)."""
+    part = 2 * index + (zeta >= ZONE_BOUNDARY)
+    part_area = np.bincount(part, minlength=2 * n).astype(np.float64)
+    used = part_area > 0
+    zone_pore, zone_area = (np.arange(2 * n) // 2)[used], part_area[used]
+    area = np.maximum(part_area, 1)
+    centroid_g = stress.evaluate(np.bincount(part, weights=xi, minlength=2 * n) / area,
+                                 np.bincount(part, weights=zeta, minlength=2 * n) / area)
+    max_g = np.zeros(2 * n)
+    np.maximum.at(max_g, part, g)
+    pore_area = np.bincount(index, minlength=n).astype(np.float64)
+    return {
+        "area": (index, np.ones(len(g)), g),
+        "centroid": (zone_pore, zone_area, centroid_g[used]),
+        "max": (zone_pore, zone_area, max_g[used]),
+        "mean": (np.arange(n), pore_area, np.bincount(index, weights=g, minlength=n) / pore_area),
+    }
 
 
 def _picture_source(folder: Path, row: dict, labels: np.ndarray) -> tuple[np.ndarray, str]:

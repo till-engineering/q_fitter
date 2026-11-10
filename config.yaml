@@ -8,6 +8,14 @@ input:
   stress_fields_dir: input/stress_fields   # stress field YAMLs (same files as in Pore_Detection);
                                     # the field of an image is the one its run used (images.json)
 
+stress:
+  pore_stress: run                  # start value of the switch in the window (stress of a pore):
+                                    #   run      = as in the Pore_Detection run (images.json)
+                                    #   area     = every pixel with its own stress
+                                    #   centroid = stress at the centroid (per zone)
+                                    #   max      = highest stress in the pore (per zone)
+                                    #   mean     = stress averaged over the whole pore
+
 q:                                  # slider: fixed limits, one q for all IDs
   min: 0.0
   max: 30.0

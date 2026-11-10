@@ -37,6 +37,10 @@ input/
 - A g^q is computed for any q from `labels.tif`, the sample frame and the stress field, with the
   `pore_stress` and stress field of the run (images.json) – identical to Pore_Detection
   (checked: `test_data/check_contributions.py`).
+- **Pore stress** (switch in the window, start value `stress.pore_stress` in `config.yaml`): how the
+  stress of a pore is taken – `run` (as in the Pore_Detection run), `area` (every pixel with its own
+  stress), `centroid` (stress at the centroid, per zone), `max` (highest stress, per zone) or `mean`
+  (stress averaged over the whole pore; only in q fitter, not in Pore_Detection).
 - The sample picture is taken from the original image (path in images.json). If it is not
   found (other computer), a picture is made from the masks of the results (pores dark).
 - Sections without sample frame or without pore_index are listed with the reason.
@@ -44,6 +48,6 @@ input/
 ## Test data
 
 `input/` contains a test run: synthetic images of Pore_Detection (`test_data/source_images/`,
-3 IDs), processed by Pore_Detection (`test_data/run_pore_detection.py`), and crack reports in the
+5 IDs), processed by Pore_Detection (`test_data/run_pore_detection.py`), and crack reports in the
 format of the labeler (`test_data/make_cracks.py`, cracks placed on chosen pores; S004 has no
 crack file). Replace the contents of `input/` with real data.
