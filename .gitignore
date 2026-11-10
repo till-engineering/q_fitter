@@ -2,22 +2,4 @@
 .venv/
 __pycache__/
 *.pyc
-
-# results (overwritten by every run)
-ergebnisse/
-
-# data: only the templates are versioned
-daten/*
-!daten/rissausgaenge.xlsx
-!daten/spannungsfelder/
-daten_synth*/
-testdaten/
-
-# never version pictures or result files, wherever they are
-*.png
-*.jpg
-*.jpeg
-*.tif
-*.tiff
-*.bmp
-.q_fitter_files.txt
+~$*

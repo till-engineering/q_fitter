@@ -1,70 +1,22 @@
-# q_fitter - configuration
-#
-# The single place for ALL settings: no defaults in code, no command-line options.
-# Methods are selected by their registered name; all other keys of an entry are its parameters
-# (each one must be given). Write your own method: see METHODEN.md.
+# q_fitter – the ONE place for all settings (no defaults in code, no command-line options).
+# Paths are relative to the project folder (or absolute).
 
 input:
-  dir: daten                  # fixed layout inside:
-                              #   poren/<ID>_results/        Pore_Detection: images.json + <ID>_<image>/labels.tif
-                              #   risse/<ID>_results/        labeler: cracks.json (only xi, zeta are used)
-                              #   spannungsfelder/<name>.yaml  stress fields
-                              #   rissausgaenge.xlsx         one row per ID: A0 of the crack origin
-  crack_area_column: A0_um2   # column of rissausgaenge.xlsx with the area of the crack origin
-                              # (A0_um2 = fracture surface; A0_schliff_um2 for a comparison)
+  pores_dir: input/pores            # Pore_Detection outputs: drag the <ID>_results folders in here
+  cracks_dir: input/cracks          # Fatigue_crack_labeler outputs: the <ID>_results folders (or only
+                                    # the <ID>_cracks.xlsx); searched recursively for *_cracks.xlsx
+  stress_fields_dir: input/stress_fields   # stress field YAMLs (same files as in Pore_Detection);
+                                    # the field of an image is the one its run used (images.json)
 
-pore_models: []               # chain, executed in this order; [] = pores as read from labels.tif
-# pore_models:
-#   - name: merge_clusters    # pores closer than gap_um (edge to edge) become one pore
-#     gap_um: 5.0
-#   - name: convex_hull       # area = convex hull (smooth envelope)
-#   - name: ellipse           # area = fitted ellipse
-#     fit: moments            # moments | contour
+q:                                  # slider: fixed limits, one q for all IDs
+  min: 0.0
+  max: 30.0
+  step: 0.1
+  start: 10.0
 
-exclusion:
-  radius_um: 50.0             # Schliff pores closer than this to the crack origin are not used
-                              # (remnant of the crack pore in the Schliff); 0 = off
-
-stress:
-  field: bending              # spannungsfelder/<field>.yaml, for crack origin and pores alike
-  model:                      # exactly one: g from g_field (+ your terms)
-    name: field               # field = g_field unchanged
-
-fits:
-  - name: m1                  # pairwise bounds, intersection, V(q)
-    q_start: 0.0              # grid for V(q) and the plots
-    q_stop: 30.0
-    q_step: 0.05
-    sample_images: all              # Schliff picture per sample: contradictions | all | none
-    image_max_px: 2000          # long edge of those pictures (large panoramas are shrunk)
-  #- name: m2                  # competition likelihood: best q and k, 95% interval of q
-   # q_start: 0.0
-   # q_stop: 30.0
-   # q_step: 0.1
-   # k_min: 0.1                # grid of k (sharpness of failure), log-spaced; k_min = k_max: k fixed
-   # k_max: 1000.0
-   # k_count: 41
-
-validation:                   # quality control: fit on a random part, predict the rest (val_* in output.dir)
-  enabled: true              # false = completely off (the other keys are then ignored)
-  test_fraction: 0.2          # share of the samples predicted per split (rounded; 0.2 = 80 % fit, 20 % test)
-  splits: 100                 # number of random splits (each one runs every fit of 'fits' once)
-  seed: 1                     # same seed = same splits
-
-output:
-  dir: ergebnisse             # overwritten by every run
-
-logging:
-  level: INFO                 # DEBUG | INFO | WARNING | ERROR
-
-synthetic:                    # only for tools/make_synthetic.py (test data with known q)
-  source: testdaten/synth_results   # Pore_Detection result of its syntetic_test images; one sample per image
-  target_dir: daten_synth     # written there in the layout of input.dir (then set input.dir to it)
-  q_true: 6.0                 # the crack origin wins at this q (with the pore models / stress model above)
-  k_true: null                # null = crack origin always the most severe pore (exact for M1)
-                              # number = it fails with probability S0^k / sum S^k (noisy data, for M2)
-  xi: [0.0, 1.0]              # crack origin: xi uniform in this range
-  zeta: [0.0, 1.0]            #               zeta uniform in this range
-  area_factor: [0.2, 5.0]     #               A0 = factor x largest Schliff pore, factor log-uniform
-  seed: 1
-  max_tries: 100000           # draws per sample before giving up
+plot:
+  top: 20                           # pores shown as bars (and numbered on the sample)
+  height_ratio: 0.25               # plot height = window width x this (larger = bigger sample picture)
+  picture_max_px: 1600              # long edge of the sample picture (straightened, scaled down)
+  picture_margin: 0.04              # embedding resin shown around the sample, share of its long side
+  font_size: 11
