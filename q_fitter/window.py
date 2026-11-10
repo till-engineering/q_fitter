@@ -168,8 +168,8 @@ class Window(QMainWindow):
 METHOD_TEXT = {
     RUN: "as in the run",
     "area": "area – every pixel",
-    "centroid": "centroid (per zone)",
-    "max": "max (per zone)",
+    "centroid": "centroid",
+    "max": "max",
     "mean": "mean over the pore",
 }
 assert set(METHOD_TEXT) == {RUN, *METHODS}
