@@ -18,13 +18,43 @@ stress:
 
 q:                                  # slider: fixed limits, one q for all IDs
   min: 0.0
-  max: 30.0
+  max: 100.0
   step: 0.1
   start: 10.0
 
-plot:
-  top: 20                           # pores shown as bars (and numbered on the sample)
-  height_ratio: 0.25               # plot height = window width x this (larger = bigger sample picture)
+plot:                               # one plot per ID: Pareto of all its sections + the pictures of all sections
+  top: 20                           # ranks shown: per section its top pores as bars (and numbered on its picture)
+  numbered: 10                      # per section its this many largest pores numbered on its picture
+  red_top: 5                        # per section its this many largest pores numbered in red (the rest yellow)
+  picture_labels: rank              # numbers on the pictures: rank = position on the x axis of the Pareto,
+                                    # pore = pore number of Pore_Detection (as in pores.json)
+  pareto_min_px: 400                # Pareto at least this wide (px) ...
+  pareto_min_share: 0.25            # ... and at least this share of the width; the pictures get the
+                                    # rest, the Pareto also takes what the pictures leave free
+  max_height_ratio: 0.9             # plot height at most this share of the visible height (pictures
+                                    # grow with the window width up to this)
+  min_height_px: 380                # plot height at least this (room for the Pareto)
   picture_max_px: 1600              # long edge of the sample picture (straightened, scaled down)
   picture_margin: 0.04              # embedding resin shown around the sample, share of its long side
   font_size: 11
+
+fit:                                # fit of ONE q for all IDs from the stress at the crack origins (Q_FIT.md)
+  bound:                            # MAIN RESULT: smallest q at which the critical pores lie above the cracks
+    share: 0.99                      #   at least this share of Σ A g^q lies at a higher stress than the crack origin
+    reference: every_crack          #   every_crack = above every crack, lowest_crack_per_id = above the least
+                                    #   loaded crack of every ID
+    cracks: 1.0                     #   ... for this share of the cracks (every_crack) / IDs; e.g. 0.9 = one
+                                    #   outlier near the surface in ten may stay uncovered
+  weight: crack                     # typical q̂ (ū = 0.5): crack = every crack counts the same, id = every ID
+  bootstrap: 2000                   # bootstrap draws (IDs drawn with replacement) for the 95 % interval
+  min_ids: 3                        # fewer IDs with cracks: no interval
+  seed: 1                           # random seed of the bootstrap (same result every start)
+  bins: 20                          # stress bins of the histogram in the fit panel
+  panel_height_px: 300              # height of the fit panel in the window
+
+geometry:                           # geometry check, standalone: .venv\Scripts\python geometry_main.py (GEOMETRIE.md)
+  tolerance_percent: 10             # length, thickness, length/thickness: deviation from the median of the ID above
+                                    # this is marked
+  wedge_max_deg: 2.0                # angle between inner and outer edge of an automatic frame above this is marked
+  output_dir: output/geometry       # "Save report": <ID>.png + geometry_check.xlsx
+  plot_height_px: 470               # height of the plot of an ID in the window

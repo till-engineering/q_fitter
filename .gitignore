@@ -3,3 +3,7 @@
 __pycache__/
 *.pyc
 ~$*
+
+# generated results (reproducible from input/ and test_data/source_images/)
+output/
+test_data/rendered/

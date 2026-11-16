@@ -1,0 +1,56 @@
+{
+ "image": [
+  "S002_fracture"
+ ],
+ "path": [
+  null
+ ],
+ "height_px": [
+  1015
+ ],
+ "width_px": [
+  982
+ ],
+ "pixel_size_um": [
+  1.7858757668711658
+ ],
+ "scale_label": [
+  "582.1955 μm"
+ ],
+ "scale_bar_px": [
+  null
+ ],
+ "scale_box_px": [
+  null
+ ],
+ "scale_note": [
+  ""
+ ],
+ "frame_origin_px": [
+  [
+   841.0103877725493,
+   100.0
+  ]
+ ],
+ "frame_angle_deg": [
+  0.0
+ ],
+ "frame_thickness_px": [
+  741.0103877725493
+ ],
+ "frame_thickness_um": [
+  1323.3524945228014
+ ],
+ "frame_length_px": [
+  710.9447879267524
+ ],
+ "frame_length_um": [
+  1269.6590683417473
+ ],
+ "frame_wedge_deg": [
+  0.1
+ ],
+ "frame_note": [
+  ""
+ ]
+}

@@ -5,9 +5,10 @@ $\Phi_q$ berechnet, und die vier umschaltbaren Methoden (`area`, `centroid`, `ma
 Die Auswahl erfolgt im Fenster („Pore stress“), der Startwert steht in `config.yaml` unter
 `stress.pore_stress`. Code: `q_fitter/data.py` (`load_image`, `_parts`, `Image.contributions`).
 
-**Alles gilt pro Schnitt** (ein Unterordner `<ID>_results/<Bild>/`). Über die Bilder einer ID wird
-nichts zusammengefasst; die ID-Zusammenfassung von Pore_Detection (`id_values.json`,
-`<ID>_results.xlsx`, `plots/` auf ID-Ebene) wird nicht gelesen.
+**Die Beiträge $B_i$ werden pro Schnitt berechnet** (ein Unterordner `<ID>_results/<Bild>/`). Das
+Pareto und $\Phi_q$ im Fenster fassen dann **alle Schnitte einer ID** zusammen (Abschnitt 5). Die
+ID-Zusammenfassung von Pore_Detection (`id_values.json`, `<ID>_results.xlsx`, `plots/` auf ID-Ebene)
+wird nicht gelesen.
 
 ---
 
@@ -118,16 +119,24 @@ Keine eigene Methode: Jeder Schnitt nimmt die Methode aus seiner Zeile in `image
 
 ## 5. Vom Beitrag zum Pareto und zum Porenindex
 
+Pro Schnitt $s$ und für die ganze ID (alle Schnitte $s$ der ID, Poren $i$ aller Schnitte):
+
 $$
-\text{Anteil}_i = \frac{B_i}{\sum_j B_j} \cdot 100\,\%, \qquad
-\Phi_q = \frac{\sum_i B_i}{A_\mathrm{Probe}}
+\Phi_q^{(s)} = \frac{\sum_{i \in s} B_i}{A_\mathrm{Probe}^{(s)}}, \qquad
+\Phi_q^\mathrm{ID} = \frac{\sum_s \sum_{i \in s} B_i}{\sum_s A_\mathrm{Probe}^{(s)}}, \qquad
+\text{Anteil}_i = \frac{B_i}{\sum_{j \in s} B_j} \cdot 100\,\% \quad (i \in s)
 $$
 
-- Das Pareto sortiert die Poren nach $B_i$; die Balken zeigen $\text{Anteil}_i$, die Linie den
-  kumulierten Anteil. Die obersten Poren sind die kritischen Poren (im Bild nummeriert).
+- Das Pareto ist eine **Überlagerung der Paretos der Schnitte**: Jeder Schnitt sortiert seine
+  Poren nach $B_i$. An Rang $r$ stehen nebeneinander die $r$-te Pore von A, B, C, … (immer in dieser
+  Reihenfolge, Farbe = Schnitt); die Balken zeigen $\text{Anteil}_i$ bezogen auf den **eigenen**
+  Schnitt, je Schnitt eine Linie mit dem kumulierten Anteil. Die obersten Poren sind die kritischen
+  Poren des Schnitts (im Bild mit ihrem Rang nummeriert).
+- Unter jedem Bild stehen $\Phi_q^{(s)}$ und die Anteile der Top 5 / Top N des Schnitts.
 - $\Phi_q$ ist dimensionslos, eine **spannungsgewichtete Porosität**: bei $q = 0$ ist
   $g^0 = 1$ und $\Phi_0$ genau die Porosität.
-- Die Balkenfarbe (außen/innen) richtet sich nach dem mittleren $\zeta$ der ganzen Pore.
+- Ob ein Balken schraffiert (innere Zone) oder voll (äußere Zone) ist, richtet sich nach dem
+  mittleren $\zeta$ der ganzen Pore.
 
 **Rolle von q.** $q$ steuert, wie stark die Spannung gegenüber der Fläche zählt. Beispiel: bei
 $q = 10$ ist $0{,}9^{10} \approx 0{,}35$, aber $0{,}5^{10} \approx 0{,}001$; kleine Poren nahe der

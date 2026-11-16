@@ -18,7 +18,7 @@ The method is switched in the window ("run" = the pore_stress of the Pore_Detect
 
 Positions: xi = x / length, zeta = z / thickness in the sample frame (zeta = 0 inner, 1 outer).
 The cracks of the labeler (xi, zeta on the fracture surface) are drawn at the same xi, zeta on
-every section of the ID.
+every section of the ID; the Pareto of an ID is taken over the pores of all its sections.
 """
 
 import json
@@ -75,7 +75,9 @@ class Image:
     note: str = ""
     info: str = ""                          # stress field, picture source
     run_method: str = ""                    # pore_stress of the Pore_Detection run
+    stress: object = None                   # StressField of the run (g at the crack origins: fit of q)
     pore_ids: np.ndarray = None             # (n,) pore numbers as in Pore_Detection
+    pore_xi: np.ndarray = None              # (n,) xi of the pore centroid
     pore_zeta: np.ndarray = None            # (n,) zeta of the pore centroid (zone colour)
     pore_xy: np.ndarray = None              # (n, 2) centroid in picture px
     # method -> (part_pore, part_weight, part_g): (m,) index of the pore of every part, w, g
@@ -202,7 +204,8 @@ def load_image(folder: Path, row: dict, fields_dir: Path, plot: dict) -> Image:
 
     margin = plot["picture_margin"] * max(length, thickness)
     scale = min(1.0, plot["picture_max_px"] / (max(length, thickness) + 2 * margin))
-    image = Image(name, pore_ids=pore_ids, run_method=mode, parts=parts,
+    image = Image(name, pore_ids=pore_ids, run_method=mode, parts=parts, stress=stress,
+                  pore_xi=np.bincount(index, weights=xi, minlength=n) / count,
                   pore_zeta=np.bincount(index, weights=zeta, minlength=n) / count,
                   sample_area_px2=float(row["sample_area_outer_px2"]) + float(row["sample_area_inner_px2"]),
                   scale=scale, margin_px=margin, length_px=length, thickness_px=thickness)
@@ -211,7 +214,7 @@ def load_image(folder: Path, row: dict, fields_dir: Path, plot: dict) -> Image:
 
     original, source = _picture_source(folder, row, labels)
     image.picture = _straighten(original, scale, margin, length, thickness, (oy, ox), (xy, xx), (zy, zx))
-    image.info = f"field {stress.key} [{stress.unit}], picture: {source}"
+    image.info = f"field {stress.key} [{stress.unit}]  ·  picture {source}"
     return image
 
 
@@ -246,7 +249,7 @@ def _picture_source(folder: Path, row: dict, labels: np.ndarray) -> tuple[np.nda
     sample = _read(roi, cv2.IMREAD_GRAYSCALE) > 0 if roi.is_file() else np.ones(labels.shape, bool)
     gray = np.where(sample, 205, 250).astype(np.uint8)
     gray[labels > 0] = 30
-    return np.dstack([gray] * 3), "masks (original image not found)"
+    return np.dstack([gray] * 3), "from masks (original not found)"
 
 
 def _straighten(original, scale, margin, length, thickness, origin, x_axis, z_axis) -> np.ndarray:

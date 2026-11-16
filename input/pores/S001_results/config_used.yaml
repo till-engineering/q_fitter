@@ -57,7 +57,7 @@ evaluation:
 - name: porosity
 - name: pore_index
   stress_fields_dir: stress_fields
-  stress: bending
+  stress: bending1
   pore_stress: area
   q_values:
   - 1

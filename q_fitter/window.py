@@ -1,30 +1,35 @@
-"""Main window: one q slider and one pore stress switch for all IDs on top, below all IDs with their sections, each section
-one plot over the full width. Only the plots in view are redrawn when q changes (the others when
-they are scrolled into view)."""
+"""Main window: one q slider and one pore stress switch for all IDs on top, below all IDs, each ID
+one plot over the full width (Pareto of all its sections + the pictures of all its sections). The
+plot height follows from the width (pictures as large as possible, at most max_height_ratio of the
+visible height). Only the plots in view are redrawn when q changes (the others when they are
+scrolled into view). On top (button "Fit q"): the fit of q over all IDs from the stress at the crack
+origins (Q_FIT.md); "q → bound" puts the slider on the bound (smallest q at which the critical pores
+lie above the crack origins, the main result), "q → q̂" on the typical q (ū = 0.5)."""
 
 import matplotlib
+import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from PySide6.QtCore import QPoint, Qt, QTimer
-from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel, QMainWindow, QScrollArea,
-                               QSizePolicy, QSlider, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel, QMainWindow,
+                               QPushButton, QScrollArea, QSizePolicy, QSlider, QVBoxLayout, QWidget)
 
 from .data import METHODS, RUN
-from .plot import STYLE, ImagePlot
+from .fit import Fitter
+from .fitplot import FitPlot
+from .plot import STYLE, SamplePlot, section_color, section_letter
 
-NOTE_HEIGHT_PX = 46         # height of a section without plot (only its note)
 REDRAW_DELAY_MS = 60        # slider: redraw after this pause (smooth dragging)
 
 
 class Canvas(FigureCanvasQTAgg):
-    def __init__(self, sample, image, config):
+    def __init__(self, sample, config, fitter):
         with matplotlib.rc_context({**STYLE, "font.size": config["plot"]["font_size"]}):
             super().__init__(Figure())
-            self.plot = ImagePlot(self.figure, sample, image, config["plot"])
+            self.plot = SamplePlot(self.figure, sample, config["plot"], fitter)
         self.setMinimumSize(1, 1)                   # width follows the window (no horizontal scrolling)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.font_size = config["plot"]["font_size"]
-        self.ratio = config["plot"]["height_ratio"] if image.ok else None
         self.drawn = None                           # (q, method) of the last drawing
 
     def show_q(self, q: float, method: str) -> None:
@@ -38,6 +43,32 @@ class Canvas(FigureCanvasQTAgg):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.drawn = None                         # number placement depends on the size
+
+
+class FitCanvas(FigureCanvasQTAgg):
+    """The fit panel (fitplot.FitPlot)."""
+
+    def __init__(self, config):
+        self.font_size = config["plot"]["font_size"]
+        with matplotlib.rc_context({**STYLE, "font.size": self.font_size}):
+            super().__init__(Figure(layout="constrained"))
+            self.plot = FitPlot(self.figure, config["fit"]["bins"])
+        self.setMinimumSize(1, 1)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setFixedHeight(config["fit"]["panel_height_px"])
+        self.drawn = None
+
+    def show_fit(self, fit, q: float) -> None:
+        if self.drawn == (id(fit), q):
+            return
+        with matplotlib.rc_context({**STYLE, "font.size": self.font_size}):
+            self.plot.show(fit, q)
+            self.draw()
+        self.drawn = (id(fit), q)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.drawn = None
 
 
 class Window(QMainWindow):
@@ -64,6 +95,16 @@ class Window(QMainWindow):
         self.jump = QComboBox()
         self.jump.addItems([s.id for s in samples])
         self.jump.setMinimumWidth(120)
+        self.fitter = Fitter(samples, config)
+        self.show_fit = QPushButton("Fit q")
+        self.show_fit.setCheckable(True)
+        self.show_fit.setChecked(True)
+        self.show_fit.setToolTip("Fit of one q for all IDs from the stress at the crack origins (Q_FIT.md)")
+        self.to_bound = QPushButton("q → bound")
+        self.to_bound.setToolTip("Slider to the smallest q at which the critical pores lie above the crack origins "
+                                 "(fit.bound in config.yaml)")
+        self.to_fit = QPushButton("q → q̂")
+        self.to_fit.setToolTip("Slider to the typical q (mean u = 0.5)")
 
         bar = QHBoxLayout()
         title = QLabel("q")
@@ -77,6 +118,10 @@ class Window(QMainWindow):
         bar.addSpacing(24)
         bar.addWidget(QLabel("Go to ID"))
         bar.addWidget(self.jump)
+        bar.addSpacing(24)
+        bar.addWidget(self.show_fit)
+        bar.addWidget(self.to_bound)
+        bar.addWidget(self.to_fit)
         top = QWidget()
         top.setLayout(bar)
 
@@ -87,13 +132,14 @@ class Window(QMainWindow):
         for sample in samples:
             header = QLabel(_header(sample))
             header.setTextFormat(Qt.RichText)
+            header.setWordWrap(True)                # a long header must not widen the plots (cut off right)
+            header.setMinimumWidth(1)
             header.setStyleSheet("font-size: 13pt; padding: 8px 4px 2px 4px; border-top: 2px solid #495057;")
             column.addWidget(header)
             self.headers[sample.id] = header
-            for image in sample.images:
-                canvas = Canvas(sample, image, config)
-                column.addWidget(canvas)
-                self.canvases.append(canvas)
+            canvas = Canvas(sample, config, self.fitter)
+            column.addWidget(canvas)
+            self.canvases.append(canvas)
         if not samples:
             column.addWidget(QLabel("No <ID>_results folders found in input.pores_dir (config.yaml)."))
         column.addStretch(1)
@@ -106,7 +152,9 @@ class Window(QMainWindow):
         central = QWidget()
         layout = QVBoxLayout(central)
         layout.setContentsMargins(6, 6, 6, 6)
+        self.fit_canvas = FitCanvas(config)
         layout.addWidget(top)
+        layout.addWidget(self.fit_canvas)
         layout.addWidget(self.scroll, 1)
         self.setCentralWidget(central)
 
@@ -115,11 +163,15 @@ class Window(QMainWindow):
         self.slider.valueChanged.connect(self._slider_moved)
         self.spin.valueChanged.connect(self._spin_changed)
         self.method.currentIndexChanged.connect(lambda _: self.redraw_visible())
+        self.show_fit.toggled.connect(self._toggle_fit)
+        self.to_fit.clicked.connect(self._to_fit)
+        self.to_bound.clicked.connect(self._to_bound)
         self.scroll.verticalScrollBar().valueChanged.connect(lambda _: self.timer.start())
         self.jump.activated.connect(lambda i: self.scroll.verticalScrollBar().setValue(
             self.headers[self.jump.itemText(i)].y()))
         self.spin.setValue(q["start"])
         self._spin_changed(q["start"])
+        self.plot_config = config["plot"]
         self.resize(1600, 1000)
 
     @property
@@ -142,15 +194,48 @@ class Window(QMainWindow):
         super().resizeEvent(event)
         self.timer.start()
 
-    def _fit_heights(self) -> None:
-        """Plot height = width of the scroll area x height_ratio (checked before every redraw: the
-        width is only final once the window is laid out)."""
-        width = self.scroll.viewport().width() - 20
-        if width == getattr(self, "_fitted_width", None):
+    def _fit(self):
+        """The fit for the selected pore stress method (computed once per method, wait cursor)."""
+        method = self.method.currentData()
+        if not self.fitter.cached(method):
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                self.fitter.fit(method)
+            finally:
+                QApplication.restoreOverrideCursor()
+        return self.fitter.fit(method)
+
+    def _toggle_fit(self, shown: bool) -> None:
+        self.fit_canvas.setVisible(shown)
+        self.timer.start()
+
+    def _to_fit(self) -> None:
+        fit = self._fit()
+        if fit.ok and np.isfinite(fit.q_hat):
+            self.spin.setValue(round(fit.q_hat / self.step) * self.step)
+
+    def _to_bound(self) -> None:
+        """Slider to the bound, rounded UP to the step (so the bound is reached); q max if not reached."""
+        fit = self._fit()
+        if not fit.ok:
             return
-        self._fitted_width = width
+        bound = fit.bound.q if np.isfinite(fit.bound.q) else self.spin.maximum()
+        steps = np.ceil(round((bound - self.q_min) / self.step, 6))
+        self.spin.setValue(min(self.spin.maximum(), self.q_min + steps * self.step))
+
+    def _fit_heights(self) -> None:
+        """Plot heights from the width of the plots and the visible height (checked before every
+        redraw: the size is only final once the window is laid out)."""
+        margins = self.content.layout().contentsMargins()
+        width = self.scroll.viewport().width() - margins.left() - margins.right()
+        size = (width, self.scroll.viewport().height())
+        if size == getattr(self, "_fitted_size", None):
+            return
+        self._fitted_size = size
+        plot = self.plot_config
+        max_height = max(plot["min_height_px"], plot["max_height_ratio"] * size[1])
         for canvas in self.canvases:
-            canvas.setFixedHeight(round(width * canvas.ratio) if canvas.ratio else NOTE_HEIGHT_PX)
+            canvas.setFixedHeight(canvas.plot.height_for(width, max_height, plot["min_height_px"]))
         self.content.layout().activate()                # positions are needed right away
 
     def redraw_visible(self):
@@ -159,6 +244,8 @@ class Window(QMainWindow):
         top = self.scroll.verticalScrollBar().value()
         bottom = top + self.scroll.viewport().height()
         q, method = self.q, self.method.currentData()
+        if self.fit_canvas.isVisible():
+            self.fit_canvas.show_fit(self._fit(), q)
         for canvas in self.canvases:
             y = canvas.mapTo(self.content, QPoint(0, 0)).y()
             if y < bottom and y + canvas.height() > top:
@@ -176,8 +263,10 @@ assert set(METHOD_TEXT) == {RUN, *METHODS}
 
 
 def _header(sample) -> str:
-    ok = sum(image.ok for image in sample.images)
-    text = f"<b>{sample.id}</b> &nbsp; {len(sample.images)} sections ({ok} with stress)"
+    ok = [image for image in sample.images if image.ok]
+    text = f"<b>{sample.id}</b> &nbsp; {len(sample.images)} sections ({len(ok)} with stress"
+    text += ": " + ", ".join(f"<b style='color:{section_color(k)}'>{section_letter(k)}</b> {image.name}"
+                             for k, image in enumerate(ok)) + ")" if ok else ")"
     if sample.crack_file is None:
         text += " &nbsp; · &nbsp; <span style='color:#868e96'>no crack file</span>"
     else:
@@ -185,4 +274,7 @@ def _header(sample) -> str:
         text += f" &nbsp; · &nbsp; cracks: {cracks} &nbsp; <span style='color:#868e96'>{sample.crack_file.name}</span>"
     if sample.crack_note:
         text += f" &nbsp; <span style='color:#d9480f'>{sample.crack_note}</span>"
+    for image in sample.images:
+        if not image.ok:
+            text += f"<br><span style='color:#868e96; font-size:10pt'>{image.name}: {image.note}</span>"
     return text
