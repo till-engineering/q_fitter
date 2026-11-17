@@ -203,7 +203,7 @@ def load_image(folder: Path, row: dict, fields_dir: Path, plot: dict) -> Image:
     parts = _parts(index, n, xi, zeta, g, stress)
 
     margin = plot["picture_margin"] * max(length, thickness)
-    scale = min(1.0, plot["picture_max_px"] / (max(length, thickness) + 2 * margin))
+    scale = picture_scale(plot, max(length, thickness) + 2 * margin)
     image = Image(name, pore_ids=pore_ids, run_method=mode, parts=parts, stress=stress,
                   pore_xi=np.bincount(index, weights=xi, minlength=n) / count,
                   pore_zeta=np.bincount(index, weights=zeta, minlength=n) / count,
@@ -250,6 +250,15 @@ def _picture_source(folder: Path, row: dict, labels: np.ndarray) -> tuple[np.nda
     gray = np.where(sample, 205, 250).astype(np.uint8)
     gray[labels > 0] = 30
     return np.dstack([gray] * 3), "from masks (original not found)"
+
+
+def picture_scale(plot: dict, edge_px: float) -> float:
+    """Factor original px -> displayed px: plot.picture_scale, but the long edge (edge_px, with the
+    margin) not below plot.picture_min_px (small pictures stay readable) and never enlarged."""
+    factor = float(plot["picture_scale"])
+    if not 0 < factor <= 1:
+        raise ValueError(f"config.yaml plot.picture_scale: {factor} – allowed: 0 < factor <= 1")
+    return min(1.0, max(factor, float(plot["picture_min_px"]) / edge_px))
 
 
 def _straighten(original, scale, margin, length, thickness, origin, x_axis, z_axis) -> np.ndarray:

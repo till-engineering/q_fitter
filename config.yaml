@@ -34,23 +34,27 @@ plot:                               # one plot per ID: Pareto of all its section
   max_height_ratio: 0.9             # plot height at most this share of the visible height (pictures
                                     # grow with the window width up to this)
   min_height_px: 380                # plot height at least this (room for the Pareto)
-  picture_max_px: 1600              # long edge of the sample picture (straightened, scaled down)
+  picture_scale: 0.1                # resolution of the shown pictures as a factor of the original
+                                    # (0.1: 30 000 x 10 000 px -> 3 000 x 1 000 px); smaller = faster display
+  picture_min_px: 800               # ... but the long edge of a picture not below this (small pictures)
   picture_margin: 0.04              # embedding resin shown around the sample, share of its long side
   font_size: 11
 
-fit:                                # fit of ONE q for all IDs from the stress at the crack origins (Q_FIT.md)
-  bound:                            # MAIN RESULT: smallest q at which the critical pores lie above the cracks
-    share: 0.99                      #   at least this share of Σ A g^q lies at a higher stress than the crack origin
-    reference: every_crack          #   every_crack = above every crack, lowest_crack_per_id = above the least
-                                    #   loaded crack of every ID
-    cracks: 1.0                     #   ... for this share of the cracks (every_crack) / IDs; e.g. 0.9 = one
-                                    #   outlier near the surface in ten may stay uncovered
-  weight: crack                     # typical q̂ (ū = 0.5): crack = every crack counts the same, id = every ID
-  bootstrap: 2000                   # bootstrap draws (IDs drawn with replacement) for the 95 % interval
-  min_ids: 3                        # fewer IDs with cracks: no interval
-  seed: 1                           # random seed of the bootstrap (same result every start)
-  bins: 20                          # stress bins of the histogram in the fit panel
+fit:                                # fit of q to measured crack curves (FIT.md): the q at which the cumulated
+                                    # Σ A g^q over the stress comes closest to the curve (all IDs in input)
+  g_min: 0.5                        # range of the curves: mean stress (0 %) ...
+  g_max: 1.0                        # ... to full stress (100 %); compared only up to the highest stress of the
+                                    # stress fields if lower (e.g. 0.98 at the edge of an FEM field): the curve is
+                                    # then scaled to 0 % at g_min and 100 % there (percent or share does not matter)
+  points: 101                       # evenly spaced stresses in [g_min, g_max] at which model and curve are compared
+  weight: id                        # id = every ID counts the same (its sections summed), pore = Σ A g^q of all
+                                    # IDs together (large sections count more)
   panel_height_px: 300              # height of the fit panel in the window
+  curves:                           # the measured curves: formula in g (or x), as from the Excel trend line;
+                                    # allowed: ^ or ² ³ for powers, x3 for x^3, 3x for 3*x, decimal comma,
+                                    # NumPy functions (exp, log, sqrt, ...); every curve gets its own q
+    - name: example (replace)       # 3t² - 2t³ with t = 2g - 1, in percent
+      formula: "y = -1600x^3 + 3600x^2 - 2400x + 500"
 
 geometry:                           # geometry check, standalone: .venv\Scripts\python geometry_main.py (GEOMETRIE.md)
   tolerance_percent: 10             # length, thickness, length/thickness: deviation from the median of the ID above

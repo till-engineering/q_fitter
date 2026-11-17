@@ -35,25 +35,15 @@ All settings are in `config.yaml` (q limits, step, start value, number of bars, 
 Layout check without window: `.venv\Scripts\python test_data\render_plots.py [q] [method]` renders
 every ID at three widths to `test_data/rendered/` and reports cut-off or overlapping parts.
 
-## Fit of q (panel "Fit q", buttons "q → bound" and "q → q̂")
+## Fit of q (panel "Fit q", button "q → fit")
 
-One q for all IDs from the **stress at the crack origins** (not their position, not the size of the
-origin pore): for every crack u = share of Σ A g^q of its ID that is loaded higher than the crack
-origin.
-
-- **Bound (main result):** the smallest q at which the critical pores lie above the crack origins,
-  i.e. u ≥ `fit.bound.share` (90 %) for every crack (or the least loaded crack of every ID,
-  `fit.bound.reference`), for `fit.bound.cracks` of them (100 %).
-- **Typical q̂:** the q where the mean of u is 0.5 (u is uniform if the model with q is right), with
-  a 95 % range.
-
-The panel shows both over q, and at the q of the slider how Σ A g^q is spread over the stress
-together with the stresses of the crack origins. Every crack on the pictures shows its u (green
-background: covered by the bound). Maths,
-interpretation and limits: [Q_FIT.md](Q_FIT.md) (German); step-by-step explanation with figures, how
-to read the plots and what follows from them: [Q_FIT_ERKLAERT.md](Q_FIT_ERKLAERT.md) (German; figures
-made by `docs\make_figures.py`). Settings: `fit` in `config.yaml`.
-Check with synthetic cracks of known q: `.venv\Scripts\python test_data\check_fit.py [method]`.
+The measured crack curves (cumulated frequency of the crack origins over the relative stress, 0 % at
+the mean stress 0.5 to 100 % at the full stress 1) are entered as formulas in `config.yaml`
+`fit.curves` (e.g. the cubic trend line from Excel: `y = -1600x^3 + 3600x^2 - 2400x + 500`). For
+every curve the q is fitted at which the cumulated Σ A g^q of the pores of all IDs in `input/`
+over the stress comes closest to it (least squares). The panel shows the curves, the model at the
+fitted q and at the q of the slider, and the distance over q. Maths and limits: [FIT.md](FIT.md)
+(German). Check: `.venv\Scripts\python test_data\check_fit.py [method]`.
 
 ## Input (drag the program outputs in)
 

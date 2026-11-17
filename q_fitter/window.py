@@ -2,17 +2,15 @@
 one plot over the full width (Pareto of all its sections + the pictures of all its sections). The
 plot height follows from the width (pictures as large as possible, at most max_height_ratio of the
 visible height). Only the plots in view are redrawn when q changes (the others when they are
-scrolled into view). On top (button "Fit q"): the fit of q over all IDs from the stress at the crack
-origins (Q_FIT.md); "q → bound" puts the slider on the bound (smallest q at which the critical pores
-lie above the crack origins, the main result), "q → q̂" on the typical q (ū = 0.5)."""
+scrolled into view). On top (button "Fit q"): the fit of q to the measured crack curves of
+config.yaml fit.curves (FIT.md); "q → fit" puts the slider on the fitted q of the chosen curve."""
 
 import matplotlib
-import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from PySide6.QtCore import QPoint, Qt, QTimer
-from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel, QMainWindow,
-                               QPushButton, QScrollArea, QSizePolicy, QSlider, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel, QMainWindow, QPushButton,
+                               QScrollArea, QSizePolicy, QSlider, QVBoxLayout, QWidget)
 
 from .data import METHODS, RUN
 from .fit import Fitter
@@ -23,10 +21,10 @@ REDRAW_DELAY_MS = 60        # slider: redraw after this pause (smooth dragging)
 
 
 class Canvas(FigureCanvasQTAgg):
-    def __init__(self, sample, config, fitter):
+    def __init__(self, sample, config):
         with matplotlib.rc_context({**STYLE, "font.size": config["plot"]["font_size"]}):
             super().__init__(Figure())
-            self.plot = SamplePlot(self.figure, sample, config["plot"], fitter)
+            self.plot = SamplePlot(self.figure, sample, config["plot"])
         self.setMinimumSize(1, 1)                   # width follows the window (no horizontal scrolling)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.font_size = config["plot"]["font_size"]
@@ -48,11 +46,11 @@ class Canvas(FigureCanvasQTAgg):
 class FitCanvas(FigureCanvasQTAgg):
     """The fit panel (fitplot.FitPlot)."""
 
-    def __init__(self, config):
+    def __init__(self, config, fitter):
         self.font_size = config["plot"]["font_size"]
         with matplotlib.rc_context({**STYLE, "font.size": self.font_size}):
             super().__init__(Figure(layout="constrained"))
-            self.plot = FitPlot(self.figure, config["fit"]["bins"])
+            self.plot = FitPlot(self.figure, fitter)
         self.setMinimumSize(1, 1)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setFixedHeight(config["fit"]["panel_height_px"])
@@ -99,12 +97,15 @@ class Window(QMainWindow):
         self.show_fit = QPushButton("Fit q")
         self.show_fit.setCheckable(True)
         self.show_fit.setChecked(True)
-        self.show_fit.setToolTip("Fit of one q for all IDs from the stress at the crack origins (Q_FIT.md)")
-        self.to_bound = QPushButton("q → bound")
-        self.to_bound.setToolTip("Slider to the smallest q at which the critical pores lie above the crack origins "
-                                 "(fit.bound in config.yaml)")
-        self.to_fit = QPushButton("q → q̂")
-        self.to_fit.setToolTip("Slider to the typical q (mean u = 0.5)")
+        self.show_fit.setToolTip("Fit of q to the measured crack curves (fit.curves in config.yaml, FIT.md)")
+        self.curve = QComboBox()
+        for curve in self.fitter.curves:
+            self.curve.addItem(curve.name)
+        self.curve.setToolTip("Curve whose fitted q the button sets")
+        self.curve.setVisible(len(self.fitter.curves) > 1)
+        self.to_fit = QPushButton("q → fit")
+        self.to_fit.setToolTip("Slider to the fitted q of the curve")
+        self.to_fit.setEnabled(bool(self.fitter.curves))
 
         bar = QHBoxLayout()
         title = QLabel("q")
@@ -120,7 +121,7 @@ class Window(QMainWindow):
         bar.addWidget(self.jump)
         bar.addSpacing(24)
         bar.addWidget(self.show_fit)
-        bar.addWidget(self.to_bound)
+        bar.addWidget(self.curve)
         bar.addWidget(self.to_fit)
         top = QWidget()
         top.setLayout(bar)
@@ -137,7 +138,7 @@ class Window(QMainWindow):
             header.setStyleSheet("font-size: 13pt; padding: 8px 4px 2px 4px; border-top: 2px solid #495057;")
             column.addWidget(header)
             self.headers[sample.id] = header
-            canvas = Canvas(sample, config, self.fitter)
+            canvas = Canvas(sample, config)
             column.addWidget(canvas)
             self.canvases.append(canvas)
         if not samples:
@@ -152,7 +153,7 @@ class Window(QMainWindow):
         central = QWidget()
         layout = QVBoxLayout(central)
         layout.setContentsMargins(6, 6, 6, 6)
-        self.fit_canvas = FitCanvas(config)
+        self.fit_canvas = FitCanvas(config, self.fitter)
         layout.addWidget(top)
         layout.addWidget(self.fit_canvas)
         layout.addWidget(self.scroll, 1)
@@ -165,7 +166,6 @@ class Window(QMainWindow):
         self.method.currentIndexChanged.connect(lambda _: self.redraw_visible())
         self.show_fit.toggled.connect(self._toggle_fit)
         self.to_fit.clicked.connect(self._to_fit)
-        self.to_bound.clicked.connect(self._to_bound)
         self.scroll.verticalScrollBar().valueChanged.connect(lambda _: self.timer.start())
         self.jump.activated.connect(lambda i: self.scroll.verticalScrollBar().setValue(
             self.headers[self.jump.itemText(i)].y()))
@@ -211,17 +211,9 @@ class Window(QMainWindow):
 
     def _to_fit(self) -> None:
         fit = self._fit()
-        if fit.ok and np.isfinite(fit.q_hat):
-            self.spin.setValue(round(fit.q_hat / self.step) * self.step)
-
-    def _to_bound(self) -> None:
-        """Slider to the bound, rounded UP to the step (so the bound is reached); q max if not reached."""
-        fit = self._fit()
-        if not fit.ok:
-            return
-        bound = fit.bound.q if np.isfinite(fit.bound.q) else self.spin.maximum()
-        steps = np.ceil(round((bound - self.q_min) / self.step, 6))
-        self.spin.setValue(min(self.spin.maximum(), self.q_min + steps * self.step))
+        k = self.curve.currentIndex()
+        if fit.ok and 0 <= k < len(fit.results):
+            self.spin.setValue(round(fit.results[k].q / self.step) * self.step)
 
     def _fit_heights(self) -> None:
         """Plot heights from the width of the plots and the visible height (checked before every

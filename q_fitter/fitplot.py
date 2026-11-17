@@ -1,98 +1,94 @@
-"""The fit panel of the window (fit of q over all IDs from the stress at the crack origins, Q_FIT.md):
+"""The fit panel (FIT.md).
 
-left   over q: u of every crack (grey) = share of Σ A g^q above the stress at its origin
-       BOUND (green, main result): share of the cracks (or IDs) with u >= fit.bound.share (step
-       line), the required share (dashed), the bound = smallest q that covers enough of them
-       TYPICAL: ū (black), q̂ where ū = 0.5 (red, 95 % range shaded)
-       the q of the slider (blue)
-right  at the q of the slider: how Σ A g^q is spread over the stress (bars, all IDs with cracks),
-       the stresses at the crack origins (red) and the crack that sets the bound (green): the share
-       of the bars right of the green line is what the bound asks for
+left   cumulated share over the stress g in [g_min, g_top] (g_top: as far as the stress field reaches): every measured curve (dashed, thick),
+       the model at its fitted q (same colour, thin), the model at the q of the slider (black) and,
+       for comparison, the crack origins of the input (grey steps; not used by the fit)
+right  RMS distance between model and every curve over q, fitted q marked, slider q as a line
 """
 
 import numpy as np
 from matplotlib.figure import Figure
-from matplotlib.lines import Line2D
-from matplotlib.patches import Patch
 
-from .fit import Fit
+from .fit import Fit, Fitter
 
-PORES, CRACKS, Q_HAT, Q_NOW, BOUND = "#74c0fc", "#e03131", "#e03131", "#1c7ed6", "#2b8a3e"
+CURVE_COLORS = ("#d9480f", "#0f6d8c", "#2b8a3e", "#7048e8", "#c2255c", "#e67700")
+SLIDER = "#212529"
+CRACKS = "#868e96"
 
 
-def decisive_stress(fit: Fit) -> float:
-    """Stress at the origin of the crack that sets the bound (lowest crack of the ID if per ID)."""
-    bound = fit.bound
-    unit = bound.decisive
-    if bound.reference == "every_crack":
-        k = [f"{i} {label}" for i, label in zip(fit.ids, fit.labels)].index(unit)
-        return float(fit.crack_g[k])
-    return float(min(g for i, g in zip(fit.ids, fit.crack_g) if i == unit))
+def curve_color(k: int) -> str:
+    return CURVE_COLORS[k % len(CURVE_COLORS)]
 
 
 class FitPlot:
-    def __init__(self, figure: Figure, bins: int):
-        self.figure, self.bins = figure, bins
-        self.curve, self.histogram = figure.subplots(1, 2, width_ratios=[1.5, 1])
+    def __init__(self, figure: Figure, fitter: Fitter):
+        self.figure, self.fitter = figure, fitter
+        self.curves_ax, self.rms_ax = figure.subplots(1, 2, width_ratios=(1.3, 1))
+        self.crack_g = _crack_stresses(fitter)
 
     def show(self, fit: Fit, q: float) -> None:
-        curve, histogram = self.curve, self.histogram
-        curve.cla()
-        histogram.cla()
+        ax, rms = self.curves_ax, self.rms_ax
+        ax.clear()
+        rms.clear()
+        fitter, grid = self.fitter, self.fitter.grid
         if not fit.ok:
-            curve.text(0.5, 0.5, fit.describe() + ("\n" + "\n".join(fit.skipped) if fit.skipped else ""),
-                       ha="center", va="center", transform=curve.transAxes, color="#868e96")
-            histogram.set_axis_off()
+            ax.text(0.5, 0.5, fit.note, ha="center", va="center", transform=ax.transAxes, color=CRACKS)
+            rms.set_axis_off()
             return
-        histogram.set_axis_on()
-        bound = fit.bound
-        curve.plot(fit.q, bound.value.T, color="#ced4da", linewidth=0.8)
-        low = fit.q[0] if fit.low_side else fit.low
-        high = fit.q[-1] if fit.high_side else fit.high
-        curve.axvspan(low, high, color=Q_HAT, alpha=0.07, linewidth=0)
-        curve.plot(fit.q, fit.mean, color="black", linewidth=1.2)
-        if not fit.side:
-            curve.axvline(fit.q_hat, color=Q_HAT, linewidth=1.2, linestyle="--")
-        curve.axhline(bound.share, color=BOUND, linestyle="--", linewidth=1.0)
-        curve.step(fit.q, bound.covered, where="post", color=BOUND, linewidth=2.2)
-        if not bound.side:
-            curve.axvline(bound.q, color=BOUND, linewidth=2.0)
-        curve.axvline(q, color=Q_NOW, linewidth=1.2)
-        curve.set_xlim(fit.q[0], fit.q[-1])
-        curve.set_ylim(0, 1.02)
-        curve.set_xlabel("q")
-        curve.set_ylabel("share")
-        curve.set_title(bound.describe() + "\n" + fit.describe(), loc="left", fontsize="medium", linespacing=1.4)
-        kind = "cracks" if bound.reference == "every_crack" else "IDs"
-        curve.legend(handles=[
-            Line2D([], [], color=BOUND, linewidth=2.2, label=f"{kind} covered (u ≥ {bound.share:.0%}) → bound"),
-            Line2D([], [], color="#ced4da", linewidth=0.8, label="u: share of Σ A g^q above the crack"),
-            Line2D([], [], color="black", linewidth=1.2, label="ū (mean) → typical q̂ (red)"),
-            Line2D([], [], color=Q_NOW, linewidth=1.2, label="q of the slider")],
-            loc="lower right", fontsize="small")
+        rms.set_axis_on()
+        method = fit.method
+        if len(self.crack_g):
+            g = np.sort(self.crack_g)
+            ax.step(np.concatenate([[fitter.g_min], g, [fitter.g_top]]),
+                    np.concatenate([[0], np.arange(1, len(g) + 1) / len(g), [1]]) * 100, where="post",
+                    color=CRACKS, linewidth=1.0, label=f"cracks in input (n = {len(g)})")
+        for k, result in enumerate(fit.results):
+            color = curve_color(k)
+            ax.plot(grid, result.curve.values * 100, "--", color=color, linewidth=2.2, label=result.curve.name)
+            if np.isfinite(result.q):
+                ax.plot(grid, fitter.model(result.q, method) * 100, color=color, linewidth=1.2,
+                        label=f"model q = {result.q:.2f}")
+        ax.plot(grid, fitter.model(q, method) * 100, color=SLIDER, linewidth=1.4, label=f"model q = {q:g} (slider)")
+        ax.set_xlim(fitter.g_min, fitter.g_top)
+        ax.set_ylim(0, 102)
+        ax.set_xlabel("relative stress g")
+        ax.set_ylabel("cumulated share (%)")
+        title = "measured curves and model F_q(g)"
+        if fitter.g_top < fitter.g_max:
+            title += f"  ·  compared up to g = {fitter.g_top:.3f} (highest stress of the fields), curves scaled to 100 % there"
+        ax.set_title(title, loc="left", fontsize="medium")
+        ax.legend(loc="upper left", fontsize="small")
 
-        top = max(max(float(s.g.max()) for s in p.sections) for p in fit.prepared)
-        top = max(top, float(np.max(fit.crack_g)))
-        bins = np.linspace(min(0.0, float(np.min(fit.crack_g))), top * (1 + 1e-9), self.bins + 1)
-        pores, cracks = fit.distribution(q, bins)
-        width = bins[1] - bins[0]
-        histogram.bar(bins[:-1], 100 * pores, width=width, align="edge", color=PORES, edgecolor="white",
-                      linewidth=0.5)
-        histogram.stairs(100 * cracks, bins, color=CRACKS, linewidth=1.6)
-        histogram.plot(fit.crack_g, np.zeros(len(fit.crack_g)), "|", color=CRACKS, markersize=14,
-                       markeredgewidth=2, clip_on=False)
-        g_bound = decisive_stress(fit)
-        histogram.axvline(g_bound, color=BOUND, linewidth=2.0)
-        i = int(np.argmin(np.abs(fit.q - q)))
-        k = bound.units.index(bound.decisive)
-        reached = "bound reached" if bound.covered[i] >= bound.cracks - 1e-9 else "below the bound → larger q"
-        histogram.set_title(f"q = {q:g}:  {bound.covered[i]:.0%} of the {kind} covered ({reached})\n"
-                            f"{bound.value[k, i]:.0%} of Σ A g^q right of the green line ({bound.decisive})",
-                            loc="left", fontsize="medium", linespacing=1.4)
-        histogram.set_xlim(bins[0], bins[-1])
-        histogram.set_xlabel("stress g")
-        histogram.set_ylabel("share (%)")
-        histogram.legend(handles=[Patch(color=PORES, label="pores: share of Σ A g^q"),
-                                  Line2D([], [], color=CRACKS, linewidth=1.6, label="crack origins"),
-                                  Line2D([], [], color=BOUND, linewidth=2.0, label="crack that sets the bound")],
-                         loc="upper left", fontsize="small")
+        for k, result in enumerate(fit.results):
+            color = curve_color(k)
+            rms.plot(fit.q_scan, fit.rms_scan[k] * 100, color=color, linewidth=1.4)
+            if np.isfinite(result.q):
+                rms.plot(result.q, result.rms * 100, "o", color=color, markersize=6)
+        rms.axvline(q, color=SLIDER, linewidth=1.0)
+        rms.set_xlim(fit.q_scan[0], fit.q_scan[-1])
+        rms.set_ylim(bottom=0)
+        rms.set_xlabel("q")
+        rms.set_ylabel("RMS distance (%)")
+        lines = []
+        for k, result in enumerate(fit.results):
+            text = f"{result.curve.name}: q = {result.q:.2f}, RMS {result.rms * 100:.1f} %"
+            if result.at_limit:
+                text += "  (at the edge of the q range!)"
+            if result.curve.warning:
+                text += f"  – {result.curve.warning}"
+            lines.append(text)
+        rms.set_title("\n".join(lines), loc="left", fontsize="small")
+
+
+def _crack_stresses(fitter: Fitter) -> np.ndarray:
+    """g at every crack origin of the input (stress field of the first section of its ID), only
+    the cracks in [g_min, g_top]."""
+    values = []
+    for sample in fitter.samples:
+        image = next((image for image in sample.images if image.ok), None)
+        if image is None or not sample.cracks:
+            continue
+        g = image.stress.evaluate([c.xi for c in sample.cracks], [c.zeta for c in sample.cracks])
+        values.extend(float(v) for v in np.atleast_1d(g))
+    values = np.array(values)
+    return values[(values >= fitter.g_min) & (values <= fitter.g_top)]

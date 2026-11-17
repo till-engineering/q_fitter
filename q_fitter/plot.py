@@ -27,7 +27,6 @@ SECTION_COLORS = ("#0f6d8c", "#d9480f", "#2b8a3e", "#7048e8", "#c2255c", "#e6770
 INNER_HATCH = "////"
 GROUP_WIDTH = 0.82                          # width of the bars of one rank together (1 = no gap)
 CRACK = "#00e5ff"
-COVERED = "#2b8a3e"                         # crack label background: enough of Σ A g^q above the crack
 LABEL, LABEL_TOP = "#ffff00", "#ff1a1a"     # pore numbers: yellow, the red_top largest red
 LABEL_PT = (7.0, 11.0)                      # font size of the smallest / largest contribution
 LEADER_PT = (12, 20, 30)                    # tried lengths of the line from the number to the pore
@@ -58,9 +57,8 @@ def section_color(k: int) -> str:
 
 
 class SamplePlot:
-    def __init__(self, figure: Figure, sample: Sample, plot: dict, fitter=None):
-        self.figure, self.sample, self.fitter = figure, sample, fitter
-        self.crack_texts = []                       # label of every crack on every picture (u at q added)
+    def __init__(self, figure: Figure, sample: Sample, plot: dict):
+        self.figure, self.sample = figure, sample
         self.top, self.font, self.labels = plot["top"], plot["font_size"], plot["picture_labels"]
         self.numbered, self.red = plot["numbered"], plot["red_top"]
         if self.labels not in ("rank", "pore"):
@@ -109,10 +107,10 @@ class SamplePlot:
             ax.plot(x, y, marker="o", markersize=11, markerfacecolor="none", markeredgecolor=CRACK,
                     markeredgewidth=1.8, zorder=5)
             ax.plot(x, y, marker="+", markersize=6, color=CRACK, markeredgewidth=1.2, zorder=5)
-            self.crack_texts.append(ax.annotate(
+            ax.annotate(
                 crack.label, (x, y), xytext=(8, 8), textcoords="offset points", color=CRACK,
                 fontsize="medium", fontweight="bold", zorder=5,
-                bbox=dict(boxstyle="round,pad=0.12", facecolor="black", alpha=0.6, linewidth=0)))
+                bbox=dict(boxstyle="round,pad=0.12", facecolor="black", alpha=0.6, linewidth=0))
         ax.set_title(f"{section_letter(k)}   {image.name}", loc="left", fontsize="medium", fontweight="bold",
                      color=section_color(k), pad=4)
         self.infos.append(ax.annotate("", (0.0, 0.0), xycoords="axes fraction", xytext=(0, -3),
@@ -217,7 +215,6 @@ class SamplePlot:
         for number in self.numbers:
             number.remove()
         self.numbers = []
-        self._crack_shares(q, method)
         for image, w, total, order, ok, info in zip(self.images, per_image, totals, orders, usable, self.infos):
             used = image.method(method)
             differs = "" if used == image.run_method else f" (run: {image.run_method})"
@@ -290,18 +287,6 @@ class SamplePlot:
             shown = [(rank, i) for rank, i in enumerate(order[:self.numbered]) if w[i] > 0]
             if shown:
                 self._number_pores(ax, image, shown, w, w[order[0]])
-
-    def _crack_shares(self, q: float, method: str) -> None:
-        """Crack labels with u at this q: share of Σ A g^q of the ID above the stress at the crack
-        origin (fit of q, Q_FIT.md); green background: u >= fit.bound.share (covered by the bound)."""
-        shares = self.fitter.shares(self.sample, q, method) if self.fitter else None
-        n = len(self.sample.cracks)
-        for k, text in enumerate(self.crack_texts):
-            crack = self.sample.cracks[k % n]
-            u = shares[k % n] if shares is not None else np.nan
-            text.set_text(crack.label if not np.isfinite(u) else f"{crack.label}  u {u:.2f}")
-            covered = np.isfinite(u) and u >= self.fitter.share     # bound: enough of Σ A g^q above it
-            text.get_bbox_patch().set_facecolor(COVERED if covered else "black")
 
     def _rank_labels(self, ranks: int) -> None:
         """Rank 1, 2, 3, … under the groups; if they do not fit side by side only 1, 3, 5, … or
